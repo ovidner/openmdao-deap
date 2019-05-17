@@ -4,9 +4,21 @@ from functools import partial
 import numpy as np
 import pytest
 from deap import algorithms, benchmarks, tools, base
-from openmdao.api import ExplicitComponent, Group, IndepVarComp, Problem
+from openmdao.api import (
+    ExplicitComponent,
+    Group,
+    IndepVarComp,
+    Problem,
+    SqliteRecorder,
+    CaseReader,
+)
 
 from openmdao_deap import DeapContainer, DeapDriver
+from openmdao_deap.utils import (
+    hyperplane_coefficients,
+    is_pareto_efficient,
+    cases_to_dataframe,
+)
 
 ONES = np.ones((2,))
 almost_equal = partial(np.allclose, rtol=1e-2, atol=1e-2)
@@ -104,8 +116,9 @@ def test_rosenbrock(generic_problem):
     assert almost_equal(prob["indeps.x"], np.ones(x_shape))
 
 
-@pytest.mark.xfail(reason="Assertions should check for Pareto convergence")
-def test_dtlz1(generic_problem):
+def test_dtlz1(generic_problem, tmpdir):
+    recording_path = tmpdir.join("recording.sql")
+
     x_shape = (3,)
     f_shape = (3,)
     prob = generic_problem(partial(benchmarks.dtlz1, obj=3), x_shape, f_shape)
@@ -116,8 +129,16 @@ def test_dtlz1(generic_problem):
     prob.model.add_objective("function.f")
 
     prob.driver = DeapDriver(container_class=Nsga2Container)
+    prob.driver.add_recorder(SqliteRecorder(recording_path))
     prob.setup()
     prob.run_driver()
 
-    assert almost_equal(prob["indeps.x"], np.ones(x_shape) * 0.5)
-    assert almost_equal(prob["function.f"], np.ones(f_shape) * 0.5)
+    cases = cases_to_dataframe(CaseReader(recording_path))
+    f_values = np.stack(cases["function.f"])
+    pareto_mask = is_pareto_efficient(f_values)
+    pareto_frontier_f = f_values[pareto_mask]
+
+    # The DTLZ1's Pareto frontier is a hyperplane
+    assert almost_equal(
+        hyperplane_coefficients(pareto_frontier_f), np.array([-1, -1, 0.5])
+    )
