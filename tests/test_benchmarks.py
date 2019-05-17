@@ -1,5 +1,6 @@
 import math
-from functools import partial
+from functools import partial, reduce
+from operator import mul
 
 import numpy as np
 import pytest
@@ -22,6 +23,17 @@ from openmdao_deap.utils import (
 
 ONES = np.ones((2,))
 almost_equal = partial(np.allclose, rtol=1e-2, atol=1e-2)
+
+
+def easy_peasy_dtlz1(individual, obj):
+    """The DTLZ1 function with g(x) = 0."""
+    g = 0
+    f = [0.5 * reduce(mul, individual[: obj - 1], 1) * (1 + g)]
+    f.extend(
+        0.5 * reduce(mul, individual[:m], 1) * (1 - individual[m]) * (1 + g)
+        for m in reversed(range(obj - 1))
+    )
+    return f
 
 
 class Nsga2Container(DeapContainer):
@@ -55,7 +67,7 @@ class Nsga2Container(DeapContainer):
             lambda_=pop_size // 2,
             cxpb=0.3,
             mutpb=0.3,
-            ngen=300,
+            ngen=30,
         )
 
 
@@ -121,7 +133,7 @@ def test_dtlz1(generic_problem, tmpdir):
 
     x_shape = (3,)
     f_shape = (3,)
-    prob = generic_problem(partial(benchmarks.dtlz1, obj=3), x_shape, f_shape)
+    prob = generic_problem(partial(easy_peasy_dtlz1, obj=3), x_shape, f_shape)
 
     prob.model.add_design_var(
         "indeps.x", lower=np.zeros(x_shape), upper=np.ones(x_shape)
