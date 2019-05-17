@@ -14,6 +14,9 @@ class DeapDriver(Driver):
     def _declare_options(self):
         self.options.declare("container_class")
 
+    def _get_name(self):
+        return "DeapDriver"
+
     def _setup_driver(self, problem):
         super()._setup_driver(problem)
         self.container = self.options["container_class"](driver=self)
